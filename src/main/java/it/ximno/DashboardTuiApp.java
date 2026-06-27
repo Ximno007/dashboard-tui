@@ -1,9 +1,12 @@
 package it.ximno;
 
+import com.googlecode.lanterna.TerminalPosition;
 import com.googlecode.lanterna.TerminalSize;
+import com.googlecode.lanterna.graphics.TextGraphics;
 import com.googlecode.lanterna.input.KeyStroke;
+import com.googlecode.lanterna.input.KeyType;
+import com.googlecode.lanterna.screen.Screen;
 import com.googlecode.lanterna.terminal.DefaultTerminalFactory;
-import com.googlecode.lanterna.terminal.Terminal;
 
 import java.io.IOException;
 
@@ -12,50 +15,70 @@ public class DashboardTuiApp {
     public static void main(String[] args) {
         try {
             new DashboardTuiApp().run();
-        } catch (IOException e) {
+        } catch (IOException | InterruptedException e) {
             e.printStackTrace();
         }
     }
 
-    private void run() throws IOException {
-        DefaultTerminalFactory terminalFactory = new DefaultTerminalFactory();
-        Terminal terminal = terminalFactory.createTerminal();
+    private void run() throws IOException, InterruptedException {
+        Screen screen = new DefaultTerminalFactory().createScreen();
 
         try {
-            TerminalSize size = terminal.getTerminalSize();
+            screen.startScreen();
+            screen.setCursorPosition(null);
 
-            String message = "Dashboard TUI - press Q to quit";
-            int row = size.getRows() / 2;
-            int col = (size.getColumns() - message.length()) / 2;
-
-            terminal.clearScreen();
-            terminal.setCursorPosition(col, row);
-            for (char c : message.toCharArray()) {
-                terminal.putCharacter(c);
-            }
-            terminal.flush();
+            int tick = 0;
 
             while (true) {
-                KeyStroke key = terminal.readInput();
-                if (key == null) {
-                    continue;
-                }
+                draw(screen, tick);
 
-                switch (key.getKeyType()) {
-                    case Character:
+                KeyStroke key = screen.pollInput();
+                if (key != null) {
+                    if (key.getKeyType() == KeyType.Character) {
                         char ch = key.getCharacter();
                         if (ch == 'q' || ch == 'Q') {
                             return;
                         }
-                        break;
-                    case EOF:
+                    } else if (key.getKeyType() == KeyType.EOF) {
                         return;
-                    default:
-                        break;
+                    }
                 }
+
+                tick++;
+                Thread.sleep(1000);
             }
         } finally {
-            terminal.close();
+            screen.stopScreen();
         }
+    }
+
+    private void draw(Screen screen, int tick) throws IOException {
+        screen.clear();
+
+        TextGraphics textGraphics = screen.newTextGraphics();
+        TerminalSize size = screen.getTerminalSize();
+
+        textGraphics.putString(2, 1, "Dashboard TUI");
+        textGraphics.putString(2, 2, "Press Q to quit");
+
+        textGraphics.drawRectangle(
+                new TerminalPosition(2, 4),
+                new TerminalSize(30, 5),
+                '*'
+        );
+        textGraphics.putString(4, 5, "CPU");
+        textGraphics.putString(4, 6, "Usage: " + (tick % 100) + "%");
+
+        textGraphics.drawRectangle(
+                new TerminalPosition(35, 4),
+                new TerminalSize(30, 5),
+                '*'
+        );
+        textGraphics.putString(37, 5, "RAM");
+        textGraphics.putString(37, 6, "Used: " + ((tick * 3) % 100) + "%");
+
+        textGraphics.putString(2, size.getRows() - 2, "Terminal size: " + size.getColumns() + "x" + size.getRows());
+
+        screen.refresh();
     }
 }
