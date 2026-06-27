@@ -29,12 +29,11 @@ public class DashboardTuiApp {
             screen.startScreen();
             screen.setCursorPosition(null);
 
-            int tick = 0;
-
             while (true) {
                 double cpuUsage = statsService.getCpuUsagePercent();
+                double ramUsage = statsService.getMemoryUsagePercent();
 
-                draw(screen, cpuUsage);
+                draw(screen, cpuUsage, ramUsage);
 
                 KeyStroke key = screen.pollInput();
                 if (key != null) {
@@ -53,7 +52,7 @@ public class DashboardTuiApp {
         }
     }
 
-    private void draw(Screen screen, double cpuUsage) throws IOException {
+    private void draw(Screen screen, double cpuUsage, double ramUsage) throws IOException {
         screen.clear();
 
         TextGraphics textGraphics = screen.newTextGraphics();
@@ -79,7 +78,7 @@ public class DashboardTuiApp {
         );
         textGraphics.putString(37, 5, "RAM");
 
-        String ramText = String.format("Used: %.2f%%", (cpuUsage * 3) % 100);
+        String ramText = String.format("Used: %.2f%%", (ramUsage) % 100);
         textGraphics.putString(37, 6, ramText);
 
         textGraphics.putString(2, size.getRows() - 2, "Terminal size: " + size.getColumns() + "x" + size.getRows());
