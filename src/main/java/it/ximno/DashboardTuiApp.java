@@ -1,6 +1,5 @@
 package it.ximno;
 
-import com.googlecode.lanterna.TerminalPosition;
 import com.googlecode.lanterna.TerminalSize;
 import com.googlecode.lanterna.graphics.TextGraphics;
 import com.googlecode.lanterna.input.KeyStroke;
@@ -68,100 +67,88 @@ public class DashboardTuiApp {
         textGraphics.putString(2, 1, "Dashboard TUI");
         textGraphics.putString(2, 2, "Press Q to quit | S to toggle hidden disks");
 
-        //CPU Usage
-        textGraphics.drawRectangle(
-                new TerminalPosition(2, 4),
-                new TerminalSize(30, 5),
-                '*'
+        // CPU Usage
+        List<String> cpuLines = List.of(
+                String.format("Usage: %.2f%%", cpuUsage)
         );
-        textGraphics.putString(4, 5, "CPU");
-
-        String cpuText = String.format("Usage: %.2f%%", cpuUsage);
-        textGraphics.putString(4, 6, cpuText);
-
-        //RAM Usage
-        textGraphics.drawRectangle(
-                new TerminalPosition(35, 4),
-                new TerminalSize(30, 5),
-                '*'
+        Box cpuBox = new Box(
+                2,
+                4,
+                30,
+                "CPU",
+                cpuLines,
+                false
         );
-        textGraphics.putString(37, 5, "RAM");
+        cpuBox.draw(textGraphics, false);
 
-        String ramText = String.format("Used: %.2f%%", (ramUsage));
-        textGraphics.putString(37, 6, ramText);
+        // RAM Usage
+        double totalMemGb = statsService.getTotalMemoryGb();
+        double usedMemGb = statsService.getUsedMemoryGb();
+
+        List<String> ramLines = List.of(
+                String.format("Used: %.2f%%", ramUsage),
+                String.format("Used: %.2f / %.2f GB", usedMemGb, totalMemGb)
+        );
+        Box ramBox = new Box(
+                35,
+                4,
+                30,
+                "RAM",
+                ramLines,
+                false
+        );
+        ramBox.draw(textGraphics, false);
 
         // Disks Usage
         var disks = showHiddenDisks
                 ? statsService.getAllDisks()
                 : statsService.getVisibleDisks();
 
-        // Ordina i dischi per mount
         disks.sort(java.util.Comparator.comparing(SystemStatsService.DiskUsage::mount));
 
-        // Costruiamo le stringhe che mostreremo
         List<String> lines = new ArrayList<>();
         for (SystemStatsService.DiskUsage disk : disks) {
+            long totalBytes = disk.totalBytes();
+            long usableBytes = disk.usableBytes();
+            long usedBytes = totalBytes - usableBytes;
+
+            double totalGb = totalBytes / (1024.0 * 1024 * 1024);
+            double usedGb = usedBytes / (1024.0 * 1024 * 1024);
+
             String line = String.format(
-                    "%s (%s): %.1f%%",
+                    "%s (%s): %.1f%% | %.2f / %.2f GB",
                     disk.name(),
                     disk.mount(),
-                    disk.usedPercent()
+                    disk.usedPercent(),
+                    usedGb,
+                    totalGb
             );
             lines.add(line);
         }
 
-        // Larghezza minima + margine
-        int minWidth = 35; // un po' più ampia della vecchia 30
+        int minWidth = 35;
         int maxLineLen = lines.stream()
                 .mapToInt(String::length)
                 .max()
                 .orElse(0);
-        int boxWidth = Math.max(minWidth, maxLineLen + 4); // +4 per bordi/margine
-
-        // Altezza: 2 righe (titolo + almeno una) + righe per ogni disco + eventuali separatori
-        int diskCount = disks.size();
-        int separators = diskCount >= 2 ? diskCount - 1 : 0;
-        int boxHeight = 3 + lines.size() + separators; // bordo sopra + titolo + dischi + separatori + bordo sotto
+        int boxWidth = Math.max(minWidth, maxLineLen + 4);
 
         int boxX = 68;
         int boxY = 4;
 
-        // Disegniamo la box
-        textGraphics.drawRectangle(
-                new TerminalPosition(boxX, boxY),
-                new TerminalSize(boxWidth, boxHeight),
-                '*'
-        );
-
-        // Titolo con conteggio
         String title = showHiddenDisks
-                ? String.format("Disks (all, %d)", diskCount)
-                : String.format("Disks (%d)", diskCount);
+                ? String.format("Disks (all, %d)", disks.size())
+                : String.format("Disks (%d)", disks.size());
 
-        textGraphics.putString(boxX + 2, boxY + 1, title);
-
-        // Righe dei dischi + separatori
-        int row = boxY + 2;
-        for (int i = 0; i < lines.size(); i++) {
-            String line = lines.get(i);
-            if (row >= boxY + boxHeight - 1) {
-                break;
-            }
-            textGraphics.putString(boxX + 2, row, line);
-            row++;
-
-            // Se ci sono almeno 2 dischi e non siamo sull'ultimo, disegna una linea di separazione
-            if (diskCount >= 2 && i < lines.size() - 1 && row < boxY + boxHeight - 1) {
-                textGraphics.drawLine(
-                        boxX + 1,
-                        row,
-                        boxX + boxWidth - 2,
-                        row,
-                        '-'  // carattere separatore
-                );
-                row++;
-            }
-        }
+        Box disksBox = new Box(
+                boxX,
+                boxY,
+                boxWidth,
+                title,
+                lines,
+                true
+        );
+        disksBox.draw(textGraphics, true);
 
         textGraphics.putString(2, size.getRows() - 2, "Terminal size: " + size.getColumns() + "x" + size.getRows());
 

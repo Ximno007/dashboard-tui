@@ -12,18 +12,20 @@ import java.util.List;
 
 public class SystemStatsService {
 
-    private final SystemInfo systemInfo;
     private final CentralProcessor processor;
     private final GlobalMemory memory;
     private final OperatingSystem os;
 
     public SystemStatsService() {
-        this.systemInfo = new SystemInfo();
+        SystemInfo systemInfo = new SystemInfo();
         this.processor = systemInfo.getHardware().getProcessor();
         this.memory = systemInfo.getHardware().getMemory();
         this.os = systemInfo.getOperatingSystem();
     }
 
+    /**
+     * Returns current system CPU usage as a percentage between 0 and 100.
+     */
     public double getCpuUsagePercent() {
         double load = processor.getSystemCpuLoad(1000L);
         if (load < 0) {
@@ -32,6 +34,9 @@ public class SystemStatsService {
         return load * 100.0;
     }
 
+    /**
+     * Returns current system memory usage as a percentage between 0 and 100.
+     */
     public double getMemoryUsagePercent() {
         long total = memory.getTotal();
         long available = memory.getAvailable();
@@ -44,6 +49,27 @@ public class SystemStatsService {
         return (used * 100.0) / total;
     }
 
+    /**
+     * Returns total physical memory (RAM) in gigabytes.
+     */
+    public double getTotalMemoryGb() {
+        long totalBytes = memory.getTotal();
+        return totalBytes / (1024.0 * 1024 * 1024);
+    }
+
+    /**
+     * Returns used physical memory (RAM) in gigabytes.
+     */
+    public double getUsedMemoryGb() {
+        long totalBytes = memory.getTotal();
+        long availableBytes = memory.getAvailable();
+        long usedBytes = totalBytes - availableBytes;
+        return usedBytes / (1024.0 * 1024 * 1024);
+    }
+
+    /**
+     * Returns all file stores (disks/volumes) as DiskUsage objects.
+     */
     public List<DiskUsage> getAllDisks() {
         FileSystem fileSystem = os.getFileSystem();
         List<OSFileStore> fileStores = fileSystem.getFileStores();
@@ -63,35 +89,38 @@ public class SystemStatsService {
         return result;
     }
 
+    /**
+     * Determines whether a disk should be hidden from the dashboard,
+     * filtering out temporary, boot, and system-only file systems across platforms.
+     */
     private boolean isHiddenDisk(DiskUsage disk) {
         String type = disk.type().toLowerCase();
         String mount = disk.mount().toLowerCase();
 
-        // 1. File system temporanei / RAM disk su Unix (tmpfs, devtmpfs, ramfs, ecc.)
+        // 1. Temporary / RAM-backed file systems on Unix (tmpfs, devtmpfs, ramfs, etc.)
         if (type.contains("tmpfs") || type.contains("ramfs")) {
             return true;
         }
 
-        // 2. Partizioni di sistema/boot, tipicamente non interessanti per l'utente
+        // 2. Boot / EFI partitions, typically not relevant to end users
         if (mount.startsWith("/boot") || mount.contains("efi")) {
             return true;
         }
 
-        // 3. Pseudo-filesystem di sistema (proc, sys, ecc.) se mai dovessero comparire
+        // 3. System pseudo file systems (proc, sysfs, etc.)
         if (type.contains("proc") || type.contains("sysfs")) {
             return true;
         }
 
-        // 4. Su Windows, filtra mount "strani" tipo volumi raw senza lettera di drive
-        // Esempio: "\\\\?\\Volume{...}" => nascosto
-        if (mount.startsWith("\\\\?\\")) {
-            return true;
-        }
+        // 4. On Windows, hide raw volumes without a drive letter (e.g. "\\\\?\\Volume{...}")
+        return mount.startsWith("\\\\?\\");
 
-        // Per ora tutto il resto è considerato visibile (NTFS, FAT, APFS, ext4, ecc.)
-        return false;
+        // Everything else is considered user-visible (NTFS, FAT, APFS, ext4, etc.)
     }
 
+    /**
+     * Returns only user-visible disks, filtering out tmpfs, boot/EFI and system mounts.
+     */
     public List<DiskUsage> getVisibleDisks() {
         return new ArrayList<>(
                 getAllDisks().stream()
@@ -100,7 +129,9 @@ public class SystemStatsService {
         );
     }
 
-    //RECORDS
+    /**
+     * Immutable disk usage snapshot for a single file store.
+     */
     public record DiskUsage(
             String name,
             String mount,
@@ -108,6 +139,9 @@ public class SystemStatsService {
             long totalBytes,
             long usableBytes
     ) {
+        /**
+         * Returns disk usage as a percentage of total space.
+         */
         public double usedPercent() {
             if (totalBytes == 0) {
                 return 0.0;
