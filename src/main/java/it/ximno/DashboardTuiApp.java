@@ -12,6 +12,8 @@ import java.io.IOException;
 
 public class DashboardTuiApp {
 
+    private final SystemStatsService statsService = new SystemStatsService();
+
     public static void main(String[] args) {
         try {
             new DashboardTuiApp().run();
@@ -30,7 +32,9 @@ public class DashboardTuiApp {
             int tick = 0;
 
             while (true) {
-                draw(screen, tick);
+                double cpuUsage = statsService.getCpuUsagePercent();
+
+                draw(screen, cpuUsage);
 
                 KeyStroke key = screen.pollInput();
                 if (key != null) {
@@ -43,16 +47,13 @@ public class DashboardTuiApp {
                         return;
                     }
                 }
-
-                tick++;
-                Thread.sleep(1000);
             }
         } finally {
             screen.stopScreen();
         }
     }
 
-    private void draw(Screen screen, int tick) throws IOException {
+    private void draw(Screen screen, double cpuUsage) throws IOException {
         screen.clear();
 
         TextGraphics textGraphics = screen.newTextGraphics();
@@ -67,7 +68,9 @@ public class DashboardTuiApp {
                 '*'
         );
         textGraphics.putString(4, 5, "CPU");
-        textGraphics.putString(4, 6, "Usage: " + (tick % 100) + "%");
+
+        String cpuText = String.format("Usage: %.2f%%", cpuUsage);
+        textGraphics.putString(4, 6, cpuText);
 
         textGraphics.drawRectangle(
                 new TerminalPosition(35, 4),
@@ -75,7 +78,9 @@ public class DashboardTuiApp {
                 '*'
         );
         textGraphics.putString(37, 5, "RAM");
-        textGraphics.putString(37, 6, "Used: " + ((tick * 3) % 100) + "%");
+
+        String ramText = String.format("Used: %.2f%%", (cpuUsage * 3) % 100);
+        textGraphics.putString(37, 6, ramText);
 
         textGraphics.putString(2, size.getRows() - 2, "Terminal size: " + size.getColumns() + "x" + size.getRows());
 
