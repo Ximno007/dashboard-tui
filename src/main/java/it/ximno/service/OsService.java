@@ -1,4 +1,4 @@
-package it.ximno;
+package it.ximno.service;
 
 import oshi.SystemInfo;
 import oshi.software.os.OperatingSystem;

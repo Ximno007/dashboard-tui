@@ -6,6 +6,9 @@ import com.googlecode.lanterna.input.KeyStroke;
 import com.googlecode.lanterna.input.KeyType;
 import com.googlecode.lanterna.screen.Screen;
 import com.googlecode.lanterna.terminal.DefaultTerminalFactory;
+import it.ximno.service.CpuService;
+import it.ximno.service.MemoryService;
+import it.ximno.service.OsService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
