@@ -14,6 +14,8 @@ import java.util.List;
 public class DashboardTuiApp {
 
     private final SystemStatsService statsService = new SystemStatsService();
+    private final OsService osService = new OsService();
+    private final CpuService cpuService = new CpuService();
     private boolean showHiddenDisks = false;
 
     public static void main(String[] args) {
@@ -32,7 +34,7 @@ public class DashboardTuiApp {
             screen.setCursorPosition(null);
 
             while (true) {
-                double cpuUsage = statsService.getCpuUsagePercent();
+                double cpuUsage = cpuService.getCpuUsagePercent();
                 double ramUsage = statsService.getMemoryUsagePercent();
 
                 draw(screen, cpuUsage, ramUsage);
@@ -67,14 +69,46 @@ public class DashboardTuiApp {
         textGraphics.putString(2, 1, "Dashboard TUI");
         textGraphics.putString(2, 2, "Press Q to quit | S to toggle hidden disks");
 
+        //OS Info
+        String osFamily = osService.getOsFamily();
+        String osVersion = osService.getOsVersion();
+        int osBitness = osService.getOsBitness();
+        String uptime = osService.getFormattedUptime();
+
+        textGraphics.putString(2, 4,
+                String.format("OS: %s %s (%d-bit)", osFamily, osVersion, osBitness));
+        textGraphics.putString(2, 5,
+                "Uptime: " + uptime);
+
         // CPU Usage
+        String cpuName = cpuService.getCpuName();
+        int physicalCores = cpuService.getPhysicalCoreCount();
+        int logicalCores = cpuService.getLogicalCoreCount();
+        double baseFreqGhz = cpuService.getBaseFrequencyGhz();
+
         List<String> cpuLines = List.of(
-                String.format("Usage: %.2f%%", cpuUsage)
+                String.format("Usage: %.2f%%", cpuUsage),
+                cpuName,
+                String.format("Cores: %d physical / %d logical", physicalCores, logicalCores),
+                baseFreqGhz > 0
+                        ? String.format("Base clock: %.2f GHz", baseFreqGhz)
+                        : "Base clock: unknown"
         );
+
+        int cpuMinWidth = 30;
+        int cpuMaxLineLen = cpuLines.stream()
+                .mapToInt(String::length)
+                .max()
+                .orElse(0);
+        int cpuWidth = Math.max(cpuMinWidth, cpuMaxLineLen + 4);
+
+        int cpuX = 2;
+        int cpuY = 7;
+
         Box cpuBox = new Box(
-                2,
-                4,
-                30,
+                cpuX,
+                cpuY,
+                cpuWidth,
                 "CPU",
                 cpuLines,
                 false
@@ -87,33 +121,39 @@ public class DashboardTuiApp {
 
         List<String> ramLines = List.of(
                 String.format("Used: %.2f%%", ramUsage),
-                String.format("Used: %.2f / %.2f GB", usedMemGb, totalMemGb)
+                String.format("Usage: %.2f / %.2f GB", usedMemGb, totalMemGb)
         );
+
+        int ramMinWidth = 30;
+        int ramMaxLineLen = ramLines.stream()
+                .mapToInt(String::length)
+                .max()
+                .orElse(0);
+        int ramWidth = Math.max(ramMinWidth, ramMaxLineLen + 4);
+
+        int ramX = cpuX + cpuWidth + 2;
+        int ramY = cpuY;
+
         Box ramBox = new Box(
-                35,
-                4,
-                30,
+                ramX,
+                ramY,
+                ramWidth,
                 "RAM",
                 ramLines,
                 false
         );
         ramBox.draw(textGraphics, false);
 
-        // Disks Usage
         var disks = showHiddenDisks
-                ? statsService.getAllDisks()
-                : statsService.getVisibleDisks();
+                ? osService.getAllDisks()
+                : osService.getVisibleDisks();
 
-        disks.sort(java.util.Comparator.comparing(SystemStatsService.DiskUsage::mount));
+        disks.sort(java.util.Comparator.comparing(OsService.DiskUsage::mount));
 
         List<String> lines = new ArrayList<>();
-        for (SystemStatsService.DiskUsage disk : disks) {
-            long totalBytes = disk.totalBytes();
-            long usableBytes = disk.usableBytes();
-            long usedBytes = totalBytes - usableBytes;
-
-            double totalGb = totalBytes / (1024.0 * 1024 * 1024);
-            double usedGb = usedBytes / (1024.0 * 1024 * 1024);
+        for (OsService.DiskUsage disk : disks) {
+            double totalGb = disk.totalGb();
+            double usedGb = disk.usedGb();
 
             String line = String.format(
                     "%s (%s): %.1f%% | %.2f / %.2f GB",
@@ -133,8 +173,8 @@ public class DashboardTuiApp {
                 .orElse(0);
         int boxWidth = Math.max(minWidth, maxLineLen + 4);
 
-        int boxX = 68;
-        int boxY = 4;
+        int boxX = ramX + ramWidth + 2;
+        int boxY = ramY;
 
         String title = showHiddenDisks
                 ? String.format("Disks (all, %d)", disks.size())
