@@ -50,7 +50,7 @@ public class DashboardTuiApp {
      * until the application is terminated.
      */
     private void run() throws IOException, InterruptedException {
-        TerminalScreen screen = (TerminalScreen) new DefaultTerminalFactory().createScreen();
+        TerminalScreen screen = new DefaultTerminalFactory().createScreen();
         Terminal terminal = screen.getTerminal();
         resizeListener = new SimpleTerminalResizeListener(terminal.getTerminalSize());
         terminal.addResizeListener(resizeListener);
@@ -192,7 +192,7 @@ public class DashboardTuiApp {
                 .orElse(0);
         int boxWidth = Math.max(minWidth, maxLineLen + 4);
 
-        int boxX = ramX + ramWidth + 2;
+        int diskX = ramX + ramWidth + 2;
 
         String title = showHiddenDisks
                 ? String.format("Disks (all, %d)", disks.size())
@@ -222,23 +222,61 @@ public class DashboardTuiApp {
                 .orElse(0);
         int netWidth = Math.max(netMinWidth, netMaxLineLen + 4);
 
-        int netX = boxX + boxWidth + 2;
+        int netX = diskX + boxWidth + 2;
 
         //Check if terminal is too small
         int rightmostBoxEnd = netX + netWidth;
         int requiredCols = rightmostBoxEnd + 2;
-        int maxBoxLines = Math.max(
-                cpuLines.size(),
+        int cpuHeight = 3 + cpuLines.size();
+        int ramHeight = 3 + ramLines.size();
+
+        int disksSeparators = lines.size() >= 2 ? lines.size() - 1 : 0;
+        int disksHeight = 3 + lines.size() + disksSeparators;
+
+        int netHeight = 3 + networkLines.size();
+
+        int maxBoxHeight = Math.max(
+                cpuHeight,
                 Math.max(
-                        ramLines.size(),
-                        Math.max(lines.size(), networkLines.size())
+                        ramHeight,
+                        Math.max(disksHeight, netHeight)
                 )
         );
 
-        int boxExtra = 3;
+        int separatorY = y_AXIS + maxBoxHeight;
+
+        // Top processes by CPU (costruito PRIMA del check)
+        var topProcs = osService.getTopProcessesByCpu(5);
+
+        List<String> procLines = new ArrayList<>();
+        for (var p : topProcs) {
+            String line = String.format(
+                    "%5d %-15s %5.1f%% CPU | %6.1f MB",
+                    p.pid(),
+                    p.name(),
+                    p.cpuPercent(),
+                    p.memMb()
+            );
+            procLines.add(line);
+        }
+
+        int procMinWidth = 40;
+        int procMaxLineLen = procLines.stream()
+                .mapToInt(String::length)
+                .max()
+                .orElse(0);
+        int procWidth = Math.max(procMinWidth, procMaxLineLen + 4);
+
+        int procSeparators = procLines.size() >= 2 ? procLines.size() - 1 : 0;
+        int procHeight = 3 + procLines.size() + procSeparators;
+
+        int procY = separatorY + 1;
+        int procBottomY = procY + procHeight - 1;
+
         int footerLines = 2;
 
-        int requiredRows = y_AXIS + maxBoxLines + boxExtra + footerLines;
+        int contentBottomY = procLines.isEmpty() ? separatorY : procBottomY;
+        int requiredRows = contentBottomY + footerLines + 1;
 
         int currentCols = size.getColumns();
         int currentRows = size.getRows();
@@ -283,7 +321,7 @@ public class DashboardTuiApp {
 
         //Disks Box
         Box disksBox = new Box(
-                boxX,
+                diskX,
                 y_AXIS,
                 boxWidth,
                 title,
@@ -302,6 +340,21 @@ public class DashboardTuiApp {
                 false
         );
         networkBox.draw(textGraphics, false);
+
+        for (int x = cpuX; x <= rightmostBoxEnd; x++) {
+            textGraphics.putString(x, separatorY, "-");
+        }
+
+        // Box Top processes (CPU)
+        Box procBox = new Box(
+                cpuX,
+                procY,
+                procWidth,
+                "Top processes (CPU)",
+                procLines,
+                true
+        );
+        procBox.draw(textGraphics, true);
 
         textGraphics.putString(2, size.getRows() - 2, "Terminal size: " + size.getColumns() + "x" + size.getRows());
 

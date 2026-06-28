@@ -1,6 +1,7 @@
 package it.ximno.service;
 
 import oshi.SystemInfo;
+import oshi.software.os.OSProcess;
 import oshi.software.os.OperatingSystem;
 import oshi.software.os.OSFileStore;
 import oshi.software.os.FileSystem;
@@ -167,5 +168,51 @@ public class OsService {
             long usedBytes = totalBytes - usableBytes;
             return usedBytes / (1024.0 * 1024 * 1024);
         }
+    }
+
+    /**
+     * Simple value object that describes resource usage for a single process.
+     * Contains process ID, name, CPU usage percentage and resident memory size in megabytes.
+     */
+    public record ProcessUsage(
+            int pid,
+            String name,
+            double cpuPercent,
+            double memMb
+    ) {}
+
+    /**
+     * Returns a list of the top processes ordered by CPU usage, limited to the given number of entries.
+     * Each ProcessUsage contains process ID, name, cumulative CPU usage percentage and resident memory size in megabytes.
+     *
+     * @param limit Maximum number of processes to return, sorted by decreasing CPU usage.
+     * @return List of ProcessUsage entries for the most CPU-intensive processes currently running.
+     */
+    public List<ProcessUsage> getTopProcessesByCpu(int limit) {
+        List<OSProcess> processes = os.getProcesses(
+                null,
+                OperatingSystem.ProcessSorting.CPU_DESC,
+                limit
+        );
+
+        List<ProcessUsage> result = new ArrayList<>();
+
+        for (OSProcess p : processes) {
+            if (p == null) {
+                continue;
+            }
+
+            int pid = p.getProcessID();
+            String name = p.getName();
+
+            double cpuPercent = p.getProcessCpuLoadCumulative() * 100.0;
+
+            long rssBytes = p.getResidentSetSize();
+            double memMb = rssBytes / (1024.0 * 1024.0);
+
+            result.add(new ProcessUsage(pid, name, cpuPercent, memMb));
+        }
+
+        return result;
     }
 }
