@@ -2,12 +2,13 @@ package it.ximno;
 
 import oshi.SystemInfo;
 import oshi.hardware.GlobalMemory;
+import oshi.hardware.VirtualMemory;
 
-public class SystemStatsService {
+public class MemoryService {
 
     private final GlobalMemory memory;
 
-    public SystemStatsService() {
+    public MemoryService() {
         SystemInfo systemInfo = new SystemInfo();
         this.memory = systemInfo.getHardware().getMemory();
     }
@@ -42,6 +43,26 @@ public class SystemStatsService {
         long totalBytes = memory.getTotal();
         long availableBytes = memory.getAvailable();
         long usedBytes = totalBytes - availableBytes;
+        return usedBytes / (1024.0 * 1024 * 1024);
+    }
+
+    /**
+     * Returns the total size of the system swap space in gigabytes.
+     * Swap space is disk-backed virtual memory used when physical RAM is not sufficient.
+     */
+    public double getSwapTotalGb() {
+        VirtualMemory vm = memory.getVirtualMemory();
+        long totalBytes = vm.getSwapTotal();
+        return totalBytes / (1024.0 * 1024 * 1024);
+    }
+
+    /**
+     * Returns the amount of swap space currently in use in gigabytes.
+     * This indicates how much virtual memory on disk is actively used by the system.
+     */
+    public double getSwapUsedGb() {
+        VirtualMemory vm = memory.getVirtualMemory();
+        long usedBytes = vm.getSwapUsed();
         return usedBytes / (1024.0 * 1024 * 1024);
     }
 }

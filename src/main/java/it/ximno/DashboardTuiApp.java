@@ -6,6 +6,8 @@ import com.googlecode.lanterna.input.KeyStroke;
 import com.googlecode.lanterna.input.KeyType;
 import com.googlecode.lanterna.screen.Screen;
 import com.googlecode.lanterna.terminal.DefaultTerminalFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -13,19 +15,31 @@ import java.util.List;
 
 public class DashboardTuiApp {
 
-    private final SystemStatsService statsService = new SystemStatsService();
+    private final MemoryService memoryService = new MemoryService();
     private final OsService osService = new OsService();
     private final CpuService cpuService = new CpuService();
     private boolean showHiddenDisks = false;
 
+    private static final Logger log = LoggerFactory.getLogger(DashboardTuiApp.class);
+
+    /**
+     * Entry point of the TUI application.
+     * Creates and configures the terminal UI, then starts the main run loop.
+     */
     public static void main(String[] args) {
         try {
+            log.info("Starting Dashboard TUI...");
             new DashboardTuiApp().run();
         } catch (IOException | InterruptedException e) {
-            e.printStackTrace();
+            log.error("Error while running Dashboard TUI", e);
         }
     }
 
+    /**
+     * Main loop of the TUI dashboard.
+     * Continuously reads system metrics, redraws the screen, and handles basic control flow
+     * until the application is terminated.
+     */
     private void run() throws IOException, InterruptedException {
         Screen screen = new DefaultTerminalFactory().createScreen();
 
@@ -35,7 +49,7 @@ public class DashboardTuiApp {
 
             while (true) {
                 double cpuUsage = cpuService.getCpuUsagePercent();
-                double ramUsage = statsService.getMemoryUsagePercent();
+                double ramUsage = memoryService.getMemoryUsagePercent();
 
                 draw(screen, cpuUsage, ramUsage);
 
@@ -59,6 +73,11 @@ public class DashboardTuiApp {
         }
     }
 
+    /**
+     * Draws the current dashboard view on the given Lanterna Screen.
+     * Uses the provided CPU and RAM usage values to render bars, text, and other UI elements,
+     * then refreshes the screen so the updated content becomes visible.
+     */
     private void draw(Screen screen, double cpuUsage, double ramUsage) throws IOException {
         screen.clear();
 
@@ -74,11 +93,15 @@ public class DashboardTuiApp {
         String osVersion = osService.getOsVersion();
         int osBitness = osService.getOsBitness();
         String uptime = osService.getFormattedUptime();
+        int processCount = osService.getProcessCount();
+        int threadCount = osService.getThreadCount();
 
         textGraphics.putString(2, 4,
                 String.format("OS: %s %s (%d-bit)", osFamily, osVersion, osBitness));
         textGraphics.putString(2, 5,
                 "Uptime: " + uptime);
+        textGraphics.putString(2, 6,
+                String.format("Processes: %d | Threads: %d", processCount, threadCount));
 
         // CPU Usage
         String cpuName = cpuService.getCpuName();
@@ -103,11 +126,11 @@ public class DashboardTuiApp {
         int cpuWidth = Math.max(cpuMinWidth, cpuMaxLineLen + 4);
 
         int cpuX = 2;
-        int cpuY = 7;
 
+        int y_AXIS = 8;
         Box cpuBox = new Box(
                 cpuX,
-                cpuY,
+                y_AXIS,
                 cpuWidth,
                 "CPU",
                 cpuLines,
@@ -116,12 +139,15 @@ public class DashboardTuiApp {
         cpuBox.draw(textGraphics, false);
 
         // RAM Usage
-        double totalMemGb = statsService.getTotalMemoryGb();
-        double usedMemGb = statsService.getUsedMemoryGb();
+        double totalMemGb = memoryService.getTotalMemoryGb();
+        double usedMemGb = memoryService.getUsedMemoryGb();
+        double swapTotalGb = memoryService.getSwapTotalGb();
+        double swapUsedGb = memoryService.getSwapUsedGb();
 
         List<String> ramLines = List.of(
                 String.format("Used: %.2f%%", ramUsage),
-                String.format("Usage: %.2f / %.2f GB", usedMemGb, totalMemGb)
+                String.format("Usage: %.2f / %.2f GB", usedMemGb, totalMemGb),
+                String.format("Swap: %.2f / %.2f GB", swapUsedGb, swapTotalGb)
         );
 
         int ramMinWidth = 30;
@@ -132,11 +158,10 @@ public class DashboardTuiApp {
         int ramWidth = Math.max(ramMinWidth, ramMaxLineLen + 4);
 
         int ramX = cpuX + cpuWidth + 2;
-        int ramY = cpuY;
 
         Box ramBox = new Box(
                 ramX,
-                ramY,
+                y_AXIS,
                 ramWidth,
                 "RAM",
                 ramLines,
@@ -174,7 +199,6 @@ public class DashboardTuiApp {
         int boxWidth = Math.max(minWidth, maxLineLen + 4);
 
         int boxX = ramX + ramWidth + 2;
-        int boxY = ramY;
 
         String title = showHiddenDisks
                 ? String.format("Disks (all, %d)", disks.size())
@@ -182,7 +206,7 @@ public class DashboardTuiApp {
 
         Box disksBox = new Box(
                 boxX,
-                boxY,
+                y_AXIS,
                 boxWidth,
                 title,
                 lines,
