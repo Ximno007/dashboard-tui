@@ -5,9 +5,13 @@ import com.googlecode.lanterna.graphics.TextGraphics;
 import com.googlecode.lanterna.input.KeyStroke;
 import com.googlecode.lanterna.input.KeyType;
 import com.googlecode.lanterna.screen.Screen;
+import com.googlecode.lanterna.screen.TerminalScreen;
 import com.googlecode.lanterna.terminal.DefaultTerminalFactory;
+import com.googlecode.lanterna.terminal.SimpleTerminalResizeListener;
+import com.googlecode.lanterna.terminal.Terminal;
 import it.ximno.service.CpuService;
 import it.ximno.service.MemoryService;
+import it.ximno.service.NetworkService;
 import it.ximno.service.OsService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,6 +25,8 @@ public class DashboardTuiApp {
     private final MemoryService memoryService = new MemoryService();
     private final OsService osService = new OsService();
     private final CpuService cpuService = new CpuService();
+    private final NetworkService networkService = new NetworkService();
+    private SimpleTerminalResizeListener resizeListener;
     private boolean showHiddenDisks = false;
 
     private static final Logger log = LoggerFactory.getLogger(DashboardTuiApp.class);
@@ -44,7 +50,10 @@ public class DashboardTuiApp {
      * until the application is terminated.
      */
     private void run() throws IOException, InterruptedException {
-        Screen screen = new DefaultTerminalFactory().createScreen();
+        TerminalScreen screen = (TerminalScreen) new DefaultTerminalFactory().createScreen();
+        Terminal terminal = screen.getTerminal();
+        resizeListener = new SimpleTerminalResizeListener(terminal.getTerminalSize());
+        terminal.addResizeListener(resizeListener);
 
         try {
             screen.startScreen();
@@ -85,7 +94,7 @@ public class DashboardTuiApp {
         screen.clear();
 
         TextGraphics textGraphics = screen.newTextGraphics();
-        TerminalSize size = screen.getTerminalSize();
+        TerminalSize size = resizeListener.getLastKnownSize();
 
         //Base GUI
         textGraphics.putString(2, 1, "Dashboard TUI");
@@ -131,15 +140,6 @@ public class DashboardTuiApp {
         int cpuX = 2;
 
         int y_AXIS = 8;
-        Box cpuBox = new Box(
-                cpuX,
-                y_AXIS,
-                cpuWidth,
-                "CPU",
-                cpuLines,
-                false
-        );
-        cpuBox.draw(textGraphics, false);
 
         // RAM Usage
         double totalMemGb = memoryService.getTotalMemoryGb();
@@ -162,16 +162,7 @@ public class DashboardTuiApp {
 
         int ramX = cpuX + cpuWidth + 2;
 
-        Box ramBox = new Box(
-                ramX,
-                y_AXIS,
-                ramWidth,
-                "RAM",
-                ramLines,
-                false
-        );
-        ramBox.draw(textGraphics, false);
-
+        //Disks Usage
         var disks = showHiddenDisks
                 ? osService.getAllDisks()
                 : osService.getVisibleDisks();
@@ -207,6 +198,90 @@ public class DashboardTuiApp {
                 ? String.format("Disks (all, %d)", disks.size())
                 : String.format("Disks (%d)", disks.size());
 
+        //Network Info
+        String hostname = networkService.getHostname();
+        String ipv4Gateway = networkService.getIpv4DefaultGateway();
+        String[] dnsServers = networkService.getDnsServers();
+
+        List<String> networkLines = new ArrayList<>();
+        networkLines.add("Hostname: " + hostname);
+        networkLines.add("IPv4 gateway: " + (ipv4Gateway == null || ipv4Gateway.isEmpty() ? "-" : ipv4Gateway));
+        networkLines.add("DNS servers:");
+        if (dnsServers != null && dnsServers.length > 0) {
+            for (String dns : dnsServers) {
+                networkLines.add("  - " + dns);
+            }
+        } else {
+            networkLines.add("  (none configured)");
+        }
+
+        int netMinWidth = 35;
+        int netMaxLineLen = networkLines.stream()
+                .mapToInt(String::length)
+                .max()
+                .orElse(0);
+        int netWidth = Math.max(netMinWidth, netMaxLineLen + 4);
+
+        int netX = boxX + boxWidth + 2;
+
+        //Check if terminal is too small
+        int rightmostBoxEnd = netX + netWidth;
+        int requiredCols = rightmostBoxEnd + 2;
+        int maxBoxLines = Math.max(
+                cpuLines.size(),
+                Math.max(
+                        ramLines.size(),
+                        Math.max(lines.size(), networkLines.size())
+                )
+        );
+
+        int boxExtra = 3;
+        int footerLines = 2;
+
+        int requiredRows = y_AXIS + maxBoxLines + boxExtra + footerLines;
+
+        int currentCols = size.getColumns();
+        int currentRows = size.getRows();
+        if (currentCols < requiredCols || currentRows < requiredRows) {
+            String msg1 = String.format(
+                    "Terminal too small: %dx%d (need at least %dx%d)",
+                    currentCols, currentRows, requiredCols, requiredRows
+            );
+            String msg2 = "Please enlarge the terminal window.";
+
+            int centerX = Math.max(2, (currentCols - msg1.length()) / 2);
+            int centerY = Math.max(2, currentRows / 2);
+
+            textGraphics.putString(centerX, centerY, msg1);
+            textGraphics.putString(centerX, centerY + 2, msg2);
+
+            screen.refresh();
+            return;
+        }
+
+        //CPU Box
+        Box cpuBox = new Box(
+                cpuX,
+                y_AXIS,
+                cpuWidth,
+                "CPU",
+                cpuLines,
+                false
+        );
+        cpuBox.draw(textGraphics, false);
+
+        //RAM Box
+        Box ramBox = new Box(
+                ramX,
+                y_AXIS,
+                ramWidth,
+                "RAM",
+                ramLines,
+                false
+        );
+        ramBox.draw(textGraphics, false);
+
+        //Disks Box
         Box disksBox = new Box(
                 boxX,
                 y_AXIS,
@@ -216,6 +291,17 @@ public class DashboardTuiApp {
                 true
         );
         disksBox.draw(textGraphics, true);
+
+        //Network Box
+        Box networkBox = new Box(
+                netX,
+                y_AXIS,
+                netWidth,
+                "Network",
+                networkLines,
+                false
+        );
+        networkBox.draw(textGraphics, false);
 
         textGraphics.putString(2, size.getRows() - 2, "Terminal size: " + size.getColumns() + "x" + size.getRows());
 
